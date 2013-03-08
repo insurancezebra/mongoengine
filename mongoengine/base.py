@@ -241,7 +241,7 @@ class BaseField(object):
         # check choices
         if self.choices:
             is_cls = isinstance(value, (Document, EmbeddedDocument))
-            value_to_check = value.__class__ if is_cls else value
+            value_to_check = value.__class__ if is_cls else self.to_python(value)
             err_msg = 'an instance' if is_cls else 'one'
             if isinstance(self.choices[0], (list, tuple)):
                 option_keys = [k for k, v in self.choices]
