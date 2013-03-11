@@ -273,8 +273,16 @@ class BooleanField(BaseField):
         return value
 
     def validate(self, value):
-        if not isinstance(value, bool):
-            self.error('BooleanField only accepts boolean values')
+        try:
+            value = bool(value)
+        except:
+            self.error('%s could not be converted to boolean' % value)
+
+    def prepare_query_value(self, op, value):
+        if value is None:
+            return value
+
+        return bool(value)
 
 
 class DateTimeField(BaseField):
