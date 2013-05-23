@@ -3,7 +3,7 @@ import re
 import copy
 import itertools
 import operator
-
+from bson import json_util
 from collections import defaultdict
 from functools import partial
 
@@ -1991,6 +1991,15 @@ class QuerySet(object):
         # Make select related work the same for querysets
         max_depth += 1
         return self._dereference(self, max_depth=max_depth)
+
+    def to_json(self):
+        """Converts a queryset to JSON"""
+        return json_util.dumps(self._collection_obj.find(self._query))
+
+    def from_json(self, json_data):
+        """Converts json data to unsaved objects"""
+        son_data = json_util.loads(json_data)
+        return [self._document._from_son(data) for data in son_data]
 
     @property
     def _dereference(self):

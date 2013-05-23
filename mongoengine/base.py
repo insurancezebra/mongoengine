@@ -1,5 +1,5 @@
 import operator
-import sys
+from bson import json_util
 import warnings
 import weakref
 
@@ -1028,6 +1028,15 @@ class BaseDocument(object):
                                                      field_name=field.name)
         if errors:
             raise ValidationError('ValidationError', errors=errors)
+
+    def to_json(self):
+        """Converts a document to JSON"""
+        return json_util.dumps(self.to_mongo())
+
+    @classmethod
+    def from_json(cls, json_data):
+        """Converts json data to an unsaved document instance"""
+        return cls._from_son(json_util.loads(json_data))
 
     def to_mongo(self):
         """Return data dictionary ready for use with MongoDB.
