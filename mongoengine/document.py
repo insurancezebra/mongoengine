@@ -184,6 +184,12 @@ class Document(BaseDocument):
         document already exists, it will be updated, otherwise it will be
         created.
 
+        [MK - Copied from Document with the following change]
+        Updates will only happen if the update_num for the current document is greater than or equal to the
+        update_num in MongoDB. Otherwise, the update will be considered out-of-date and ignored.
+        [MK]
+        [RF] - Brought in the newest save snippet from .8.6 [RF]
+
         :param force_insert: only try to create a new document, don't allow
             updates of existing documents
         :param validate: validates the document; set to ``False`` to skip.
@@ -242,7 +248,9 @@ class Document(BaseDocument):
                 object_id = doc['_id']
                 updates, removals = self._delta()
                 # Need to add shard key to query, or you get an error
-                select_dict = {'_id': object_id}
+                # [MK - only select documents that have an update_num >= this document's update_num]
+                select_dict = {'_id': object_id,
+                               "$or": [{"update_num": None}, {"update_num": {"$lte": doc['update_num']}}]}
                 shard_key = self.__class__._meta.get('shard_key', tuple())
                 for k in shard_key:
                     actual_key = self._db_field_map.get(k, k)

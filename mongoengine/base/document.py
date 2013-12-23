@@ -376,44 +376,26 @@ class BaseDocument(object):
             self._changed_fields.append(key)
 
     def _clear_changed_fields(self):
-        """Using get_changed_fields iterate and remove any fields that are
-        marked as changed"""
-        for changed in self._get_changed_fields():
-            parts = changed.split(".")
-            data = self
-            for part in parts:
-                if isinstance(data, list):
-                    try:
-                        data = data[int(part)]
-                    except IndexError:
-                        data = None
-                elif isinstance(data, dict):
-                    data = data.get(part, None)
-                else:
-                    data = getattr(data, part, None)
-                if hasattr(data, "_changed_fields"):
-                    data._changed_fields = []
+        """ [RF] Reverting back to .7 way to getting and clearing changed_fields [RF]
+        """
         self._changed_fields = []
+        EmbeddedDocumentField = _import_class("EmbeddedDocumentField")
+        for field_name, field in self._fields.iteritems():
+            if (isinstance(field, ComplexBaseField) and
+                    isinstance(field.field, EmbeddedDocumentField)):
+                field_value = getattr(self, field_name, None)
+                if field_value:
+                    for idx in (field_value if isinstance(field_value, dict)
+                                else xrange(len(field_value))):
+                        field_value[idx]._clear_changed_fields()
+            elif isinstance(field, EmbeddedDocumentField):
+                field_value = getattr(self, field_name, None)
+                if field_value:
+                    field_value._clear_changed_fields()
 
-    def _nestable_types_changed_fields(self, changed_fields, key, data, inspected):
-        # Loop list / dict fields as they contain documents
-        # Determine the iterator to use
-        if not hasattr(data, 'items'):
-            iterator = enumerate(data)
-        else:
-            iterator = data.iteritems()
-
-        for index, value in iterator:
-            list_key = "%s%s." % (key, index)
-            if hasattr(value, '_get_changed_fields'):
-                changed = value._get_changed_fields(inspected)
-                changed_fields += ["%s%s" % (list_key, k)
-                                    for k in changed if k]
-            elif isinstance(value, (list, tuple, dict)):
-                self._nestable_types_changed_fields(changed_fields, list_key, value, inspected)
-
-    def _get_changed_fields(self, inspected=None):
+    def _get_changed_fields(self, key='', inspected=None):
         """Returns a list of all fields that have explicitly been changed.
+        [RF] Reverting back to .7 way to getting and clearing changed_fields [RF]
         """
         EmbeddedDocument = _import_class("EmbeddedDocument")
         DynamicEmbeddedDocument = _import_class("DynamicEmbeddedDocument")
@@ -421,7 +403,7 @@ class BaseDocument(object):
         changed_fields = []
         changed_fields += getattr(self, '_changed_fields', [])
         inspected = inspected or set()
-        if hasattr(self, 'id') and isinstance(self.id, Hashable):
+        if hasattr(self, 'id'):
             if self.id in inspected:
                 return changed_fields
             inspected.add(self.id)
@@ -429,26 +411,32 @@ class BaseDocument(object):
         for field_name in self._fields_ordered:
             db_field_name = self._db_field_map.get(field_name, field_name)
             key = '%s.' % db_field_name
-            data = self._data.get(field_name, None)
-            field = self._fields.get(field_name)
+            field = self._data.get(field_name, None)
+            if hasattr(field, 'id'):
+                if field.id in inspected:
+                    continue
+                inspected.add(field.id)
 
-            if hasattr(data, 'id'):
-                if data.id in inspected:
-                    continue
-                inspected.add(data.id)
-            if isinstance(field, ReferenceField):
-                continue
-            elif (isinstance(data, (EmbeddedDocument, DynamicEmbeddedDocument))
-               and db_field_name not in changed_fields):
-                 # Find all embedded fields that have been changed
-                changed = data._get_changed_fields(inspected)
-                changed_fields += ["%s%s" % (key, k) for k in changed if k]
-            elif (isinstance(data, (list, tuple, dict)) and
-                    db_field_name not in changed_fields):
-                if (hasattr(field, 'field') and
-                    isinstance(field.field, ReferenceField)):
-                    continue
-                self._nestable_types_changed_fields(changed_fields, key, data, inspected)
+            if (isinstance(field, (EmbeddedDocument, DynamicEmbeddedDocument))
+                and db_field_name not in changed_fields):
+                # Find all embedded fields that have been changed
+                changed = field._get_changed_fields(key, inspected)
+                _changed_fields += ["%s%s" % (key, k) for k in changed if k]
+            elif (isinstance(field, (list, tuple, dict)) and
+                          db_field_name not in changed_fields):
+                # Loop list / dict fields as they contain documents
+                # Determine the iterator to use
+                if not hasattr(field, 'items'):
+                    iterator = enumerate(field)
+                else:
+                    iterator = field.iteritems()
+                for index, value in iterator:
+                    if not hasattr(value, '_get_changed_fields'):
+                        continue
+                    list_key = "%s%s." % (key, index)
+                    changed = value._get_changed_fields(list_key, inspected)
+                    changed_fields += ["%s%s" % (list_key, k)
+                                        for k in changed if k]
         return changed_fields
 
     def _delta(self):
